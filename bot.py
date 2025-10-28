@@ -72,5 +72,3 @@ async def telegram_webhook(request: Request):
 
         await bot.send_message(chat_id=user_id, text=reply, parse_mode="Markdown")
     return {"ok": True}
-id, text=reply, parse_mode="Markdown")
-    return {"ok": True}
