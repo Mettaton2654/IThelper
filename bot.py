@@ -13,7 +13,7 @@ bot = Bot(token=TELEGRAM_TOKEN)
 app = FastAPI()
 
 HISTORY_FILE = "history.json"
-MAX_HISTORY = 15
+MAX_HISTORY = 15  # Ограничение истории
 
 # --- Загрузка и сохранение истории ---
 def load_history():
@@ -31,19 +31,19 @@ chat_history = load_history()
 
 # --- Функция запроса к OpenAI ---
 async def ask_it_bot(messages):
-    # Выбор модели по длине/сложности последнего сообщения
-    last_msg = messages[-1]["content"] if messages else ""
-    model = "gpt-4o" if len(last_msg) > 300 or any(kw in last_msg.lower() for kw in ["class ", "def ", "docker", "api", "sql"]) else "gpt-4o-mini"
+    # Всегда используем gpt-4o-mini для скорости
+    model = "gpt-4o-mini"
 
     system_prompt = "Ты — опытный IT-специалист. Кратко и по делу. Примеры кода в Markdown."
 
     response = client.chat.completions.create(
         model=model,
-        messages=[{"role": "system", "content": system_prompt}] + messages
+        messages=[{"role": "system", "content": system_prompt}] + messages,
+        max_tokens=500
     )
-    return f"[Модель: {model}]\n\n{response.choices[0].message.content}"
+    return response.choices[0].message.content
 
-# --- Тестовый GET для проверки сервера ---
+# --- GET для проверки сервера ---
 @app.get("/")
 async def root():
     return {"status": "IT-бот работает!"}
@@ -53,22 +53,27 @@ async def root():
 async def telegram_webhook(request: Request):
     data = await request.json()
     update = Update.de_json(data, bot)
-    if update.message:
+    
+    if update.message and update.message.text:
         user_id = str(update.message.chat.id)
         text = update.message.text
 
         if user_id not in chat_history:
             chat_history[user_id] = []
 
+        # Добавляем сообщение пользователя и ограничиваем историю
         chat_history[user_id].append({"role": "user", "content": text})
-        # Ограничиваем историю
         chat_history[user_id] = chat_history[user_id][-MAX_HISTORY:]
 
         # Запрос к OpenAI
         reply = await ask_it_bot(chat_history[user_id])
 
+        # Сохраняем ответ бота
         chat_history[user_id].append({"role": "assistant", "content": reply})
         save_history(chat_history)
 
+        # Отправляем ответ
         await bot.send_message(chat_id=user_id, text=reply, parse_mode="Markdown")
+
     return {"ok": True}
+
