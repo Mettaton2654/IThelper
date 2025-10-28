@@ -3,6 +3,8 @@ import json
 from fastapi import FastAPI, Request
 from telegram import Update, Bot
 from openai import OpenAI
+import time
+
 
 # --- Настройки ---
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -43,6 +45,7 @@ async def ask_it_bot(messages):
     )
     return response.choices[0].message.content
 
+
 # --- GET для проверки сервера ---
 @app.get("/")
 async def root():
@@ -73,6 +76,33 @@ async def telegram_webhook(request: Request):
         save_history(chat_history)
 
         # Отправляем ответ
+        await bot.send_message(chat_id=user_id, text=reply, parse_mode="Markdown")
+
+    return {"ok": True}
+    
+@app.post(f"/{TELEGRAM_TOKEN}")
+async def telegram_webhook(request: Request):
+    data = await request.json()
+    update = Update.de_json(data, bot)
+    
+    if update.message and update.message.text:
+        user_id = str(update.message.chat.id)
+        text = update.message.text
+
+        print(f"[{time.strftime('%X')}] Получено сообщение от {user_id}: {text}")
+
+        chat_history.setdefault(user_id, [])
+        chat_history[user_id].append({"role": "user", "content": text})
+        chat_history[user_id] = chat_history[user_id][-MAX_HISTORY:]
+
+        print(f"[{time.strftime('%X')}] Отправка запроса в OpenAI...")
+        start = time.time()
+        reply = await ask_it_bot(chat_history[user_id])
+        print(f"[{time.strftime('%X')}] Ответ получен за {time.time() - start:.2f} сек")
+
+        chat_history[user_id].append({"role": "assistant", "content": reply})
+        save_history(chat_history)
+
         await bot.send_message(chat_id=user_id, text=reply, parse_mode="Markdown")
 
     return {"ok": True}
